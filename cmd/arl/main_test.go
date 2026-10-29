@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -450,5 +451,146 @@ func TestMigrateLegacy(t *testing.T) {
 	}
 	if string(h.kc["agent-relay-claude-personal"]) != "secret" || h.kc["xorp-claude-personal"] != nil {
 		t.Fatalf("keychain = %v", h.kc)
+	}
+}
+
+func TestChooseOrder(t *testing.T) {
+	views := []*accountView{
+		view("work", 0.97, 0.2, fixedNow.Add(24*time.Hour)),
+		view("personal", 0.1, 0.1, fixedNow.Add(96*time.Hour)),
+		view("spare", 0, 0, fixedNow.Add(12*time.Hour)),
+	}
+	if v := choose(views, []string{"work", "personal"}, 0.95, ""); v == nil || v.meta.Name != "personal" {
+		t.Fatalf("work is over 95%%, want personal: %v", v)
+	}
+	if v := choose(views, []string{"work", "personal"}, 0.999, ""); v == nil || v.meta.Name != "work" {
+		t.Fatalf("manual mode only skips exhausted accounts: %v", v)
+	}
+	if v := choose(views, nil, 0.95, ""); v == nil || v.meta.Name != "spare" {
+		t.Fatalf("no order: soonest reset with room: %v", v)
+	}
+	if v := choose(views, []string{"work"}, 0.95, ""); v != nil {
+		t.Fatalf("nothing allowed has room: %v", v)
+	}
+}
+
+func TestDirRules(t *testing.T) {
+	root := t.TempDir()
+	deep := filepath.Join(root, "work", "repo", "pkg")
+	_ = os.MkdirAll(deep, 0o755)
+	_ = os.WriteFile(filepath.Join(root, "work", ".arl"), []byte("# x\nclaude = work, personal\n"), 0o644)
+	r := dirRule(claudeTool, deep)
+	if r == nil || strings.Join(r.order, " ") != "work personal" {
+		t.Fatalf("rule = %+v", r)
+	}
+	if dirRule(codexTool, deep) != nil {
+		t.Fatal("codex has no rule")
+	}
+}
+
+// setupTwo registers work (active) and personal on linux.
+func setupTwo(t *testing.T) *harness {
+	h := newHarness(t, "linux")
+	h.setLive("work")
+	h.run("add", "claude", "work")
+	h.nextLogin = "personal"
+	h.run("add", "claude", "personal")
+	return h
+}
+
+func TestWatchAutoSwitch(t *testing.T) {
+	h := setupTwo(t)
+	var notes []string
+	h.a.sendNotification = func(title, body string) { notes = append(notes, title+" | "+body) }
+	h.a.writeCache(claudeTool, "work", &usageRec{FetchedAt: fixedNow, Limits: view("", 0.96, 0.3, fixedNow.Add(24*time.Hour)).limits})
+	h.a.writeCache(claudeTool, "personal", &usageRec{FetchedAt: fixedNow, Limits: view("", 0.1, 0.1, fixedNow.Add(96*time.Hour)).limits})
+	if code := h.run("mode", "claude", "auto", "95"); code != 0 {
+		t.Fatalf("mode: %s", h.err)
+	}
+	h.run("order", "claude", "personal")
+	st, _ := h.a.loadState(claudeTool)
+	h.a.watch(map[*tool]*toolState{claudeTool: st}, map[*tool][]*accountView{claudeTool: h.a.usageViewsMode(st, cachedOnly)})
+	if h.liveWho() != "personal" || len(notes) != 1 || !strings.Contains(notes[0], "switched to 'personal'") {
+		t.Fatalf("live=%s notes=%v", h.liveWho(), notes)
+	}
+}
+
+func TestWatchNotifiesOnce(t *testing.T) {
+	h := setupTwo(t)
+	var notes []string
+	h.a.sendNotification = func(title, body string) { notes = append(notes, title) }
+	h.a.writeCache(claudeTool, "work", &usageRec{FetchedAt: fixedNow, Limits: view("", 0.96, 0.3, fixedNow.Add(24*time.Hour)).limits})
+	h.run("mode", "claude", "notify")
+	for i := 0; i < 3; i++ {
+		st, _ := h.a.loadState(claudeTool)
+		h.a.watch(map[*tool]*toolState{claudeTool: st}, map[*tool][]*accountView{claudeTool: h.a.usageViewsMode(st, cachedOnly)})
+	}
+	if h.liveWho() != "work" || len(notes) != 1 {
+		t.Fatalf("notify mode must not switch and must notify once: live=%s notes=%v", h.liveWho(), notes)
+	}
+}
+
+func TestHereApply(t *testing.T) {
+	h := setupTwo(t)
+	dir := filepath.Join(h.a.home, "personal-stuff")
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, ".arl"), []byte("claude = personal\n"), 0o644)
+	old, _ := os.Getwd()
+	defer os.Chdir(old)
+	_ = os.Chdir(dir)
+
+	h.a.countProcs = func(string) int { return 1 }
+	if h.run("here", "--apply", "--quiet"); h.liveWho() != "work" || !strings.Contains(h.err.String(), "running") {
+		t.Fatalf("must not switch under a running session: live=%s err=%q", h.liveWho(), h.err)
+	}
+	h.a.countProcs = func(string) int { return 0 }
+	if h.run("here", "--apply", "--quiet"); h.liveWho() != "personal" {
+		t.Fatalf("want personal here: live=%s err=%q", h.liveWho(), h.err)
+	}
+}
+
+func TestT3Compat(t *testing.T) {
+	hubApp := newHarness(t, "linux").a
+	h := &hubServer{a: hubApp, path: filepath.Join(hubApp.stateDir(), "hub.json"), Accounts: map[string]*hubAccount{}, Machines: map[string]*hubMachine{}}
+	h.Accounts["claude:c1"] = &hubAccount{Tool: "claude", ID: "c1", Name: "work", Email: "w@x", Reading: &usageRec{FetchedAt: fixedNow, Limits: view("", 0.25, 0.5, fixedNow.Add(time.Hour)).limits}}
+	h.Accounts["codex:x1"] = &hubAccount{Tool: "codex", ID: "x1", Name: "personal", Plan: "pro", Reading: &usageRec{FetchedAt: fixedNow, Limits: []limitRec{{Key: "seven_day", Used: 0.51, WindowSeconds: 604800}}}}
+	rec := httptest.NewRecorder()
+	h.handleAuthFiles(rec, httptest.NewRequest("GET", "/v0/management/auth-files", nil))
+	if !strings.Contains(rec.Body.String(), `"auth_index":"claude:c1"`) || !strings.Contains(rec.Body.String(), `"chatgpt_account_id":"x1"`) {
+		t.Fatalf("auth-files = %s", rec.Body)
+	}
+	call := func(idx, u string) (int, map[string]any) {
+		rec := httptest.NewRecorder()
+		h.handleAPICall(rec, httptest.NewRequest("POST", "/v0/management/api-call", strings.NewReader(`{"auth_index":"`+idx+`","method":"GET","url":"`+u+`"}`)))
+		var out struct {
+			StatusCode int    `json:"status_code"`
+			Body       string `json:"body"`
+		}
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		var body map[string]any
+		_ = json.Unmarshal([]byte(out.Body), &body)
+		return out.StatusCode, body
+	}
+	code, body := call("claude:c1", "https://api.anthropic.com/api/oauth/usage")
+	if code != 200 || body["seven_day"].(map[string]any)["utilization"].(float64) != 50 {
+		t.Fatalf("claude: %d %v", code, body)
+	}
+	code, body = call("codex:x1", "https://chatgpt.com/backend-api/wham/usage")
+	if code != 200 || body["rate_limit"].(map[string]any)["primary_window"].(map[string]any)["used_percent"].(float64) != 51 {
+		t.Fatalf("codex: %d %v", code, body)
+	}
+	if code, _ = call("codex:x1", "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"); code != 404 {
+		t.Fatalf("credits must be refused: %d", code)
+	}
+}
+
+func TestDailyUse(t *testing.T) {
+	now := time.Date(2026, 10, 29, 20, 0, 0, 0, time.UTC)
+	s := func(h int, w float64) sample {
+		return sample{TS: now.Add(time.Duration(h) * time.Hour).Unix(), A: map[string]sampleAcct{"p": {W: map[string]float64{"seven_day": w}}}}
+	}
+	_, use := dailyUse([]sample{s(-30, 0.10), s(-26, 0.15), s(-2, 0.15), s(-1, 0.25)}, 3, now)
+	if got := use["p"]; len(got) != 3 || math.Abs(got[1]-0.05) > 1e-9 || math.Abs(got[2]-0.10) > 1e-9 {
+		t.Fatalf("use = %v", got)
 	}
 }

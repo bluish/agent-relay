@@ -168,7 +168,7 @@ func (a *app) syncHub() (int, error) {
 }
 
 func (a *app) cmdSync(args []string) (int, error) {
-	_, pos, help, err := parseFlags("sync", args, nil)
+	o, pos, help, err := parseFlags("sync", args, []flagSpec{{name: "--update"}, {name: "--quiet"}})
 	if err != nil {
 		return 0, err
 	}
@@ -182,16 +182,30 @@ func (a *app) cmdSync(args []string) (int, error) {
 	if a.hubURL() == "" {
 		return 0, &runtimeError{"no hub configured", "put its URL in ~/.config/agent-relay/hub (or set ARL_HUB)"}
 	}
+	states := map[*tool]*toolState{}
 	for _, t := range allTools {
 		if st, err := a.loadState(t); err == nil {
+			states[t] = st
 			a.usageViewsMode(st, refreshStale)
 		}
 	}
-	pulled, err := a.syncHub()
-	if err != nil {
-		return 0, &runtimeError{"sync failed: " + err.Error(), ""}
+	pulled, syncErr := a.syncHub()
+	views := map[*tool][]*accountView{}
+	for t, st := range states {
+		views[t] = a.usageViewsMode(st, cachedOnly)
 	}
-	fmt.Fprintf(a.stdout, "synced with %s as '%s' (%d newer reading%s)\n", a.hubURL(), a.machine(), pulled, map[bool]string{true: "", false: "s"}[pulled == 1])
+	a.watch(states, views)
+	if syncErr != nil {
+		return 0, &runtimeError{"sync failed: " + syncErr.Error(), ""}
+	}
+	if o["--quiet"] == "" {
+		fmt.Fprintf(a.stdout, "synced with %s as '%s' (%d newer reading%s)\n", a.hubURL(), a.machine(), pulled, map[bool]string{true: "", false: "s"}[pulled == 1])
+	}
+	if o["--update"] != "" {
+		if _, err := a.selfUpdate(o["--quiet"] != ""); err != nil {
+			return 0, err
+		}
+	}
 	return exitOK, nil
 }
 
@@ -230,6 +244,11 @@ func (a *app) cmdServe(args []string) (int, error) {
 	mux.HandleFunc("GET /api/state", h.handleState)
 	mux.HandleFunc("GET /api/theme", h.handleTheme)
 	mux.HandleFunc("POST /api/report", h.handleReport)
+	mux.HandleFunc("GET /api/history", h.handleHistory)
+	mux.HandleFunc("GET /download/{target}", h.handleDownload)
+	// Enough of CLIProxyAPI's management API for T3 Code's "Add hub" usage source.
+	mux.HandleFunc("GET /v0/management/auth-files", h.handleAuthFiles)
+	mux.HandleFunc("POST /v0/management/api-call", h.handleAPICall)
 	fmt.Fprintf(a.stderr, "arl hub listening on http://%s\n", addr)
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	if err := srv.ListenAndServe(); err != nil {

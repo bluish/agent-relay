@@ -199,6 +199,7 @@ func (a *app) cmdOmarchy(args []string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	a.watch(states, allViews)
 	for _, t := range allTools {
 		st, views := states[t], allViews[t]
 		if len(st.accounts) == 0 {

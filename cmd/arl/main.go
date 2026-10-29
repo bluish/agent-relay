@@ -27,7 +27,8 @@ const (
 	exitNoBin = 127
 )
 
-var commands = []string{"switch", "add", "remove", "list", "usage", "status", "sync", "serve", "help"}
+var commands = []string{"switch", "add", "remove", "list", "usage", "history", "status", "mode", "order", "bind", "unbind", "here",
+	"sync", "serve", "update", "hook", "completion", "man", "help"}
 
 // app bundles every side effect so commands can be tested.
 type app struct {
@@ -41,6 +42,10 @@ type app struct {
 	runInteractive func(path string, argv, env []string) error
 	// security runs macOS's security(1) with the given stdin and returns stdout.
 	security func(stdin string, args ...string) (string, error)
+	// countProcs counts running processes with this exact name.
+	countProcs func(name string) int
+	// sendNotification shows a desktop notification.
+	sendNotification func(title, body string)
 	// fetch does an HTTP GET and returns the status code, body and Retry-After header.
 	fetch func(url string, headers map[string]string) (int, []byte, string, error)
 }
@@ -56,6 +61,7 @@ func main() {
 		stdoutTTY: isTerminal(os.Stdout), stderrTTY: isTerminal(os.Stderr),
 		getenv: os.Getenv, home: home, user: user, goos: runtime.GOOS, now: time.Now,
 		lookPath: exec.LookPath, runInteractive: runInteractive, security: runSecurity, fetch: httpGet,
+		countProcs: countProcs, sendNotification: sendNotification,
 	}
 	a.migrateLegacy()
 	os.Exit(a.run(os.Args[1:]))
@@ -65,6 +71,23 @@ func runInteractive(path string, argv, env []string) error {
 	cmd := exec.Command(path, argv[1:]...)
 	cmd.Env, cmd.Stdin, cmd.Stdout, cmd.Stderr = env, os.Stdin, os.Stdout, os.Stderr
 	return cmd.Run()
+}
+
+func countProcs(name string) int {
+	out, err := exec.Command("pgrep", "-x", name).Output()
+	if err != nil {
+		return 0
+	}
+	return len(strings.Fields(string(out)))
+}
+
+func sendNotification(title, body string) {
+	if runtime.GOOS == "darwin" {
+		q := func(s string) string { return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"` }
+		_ = exec.Command("osascript", "-e", "display notification "+q(body)+" with title "+q(title)).Run()
+		return
+	}
+	_ = exec.Command("notify-send", "-a", "agent-relay", title, body).Run()
 }
 
 func runSecurity(stdin string, args ...string) (string, error) {
@@ -115,6 +138,28 @@ func (a *app) run(args []string) int {
 		code, err = a.cmdUsage(rest)
 	case "status":
 		code, err = a.cmdStatus(rest)
+	case "mode":
+		code, err = a.cmdMode(rest)
+	case "order":
+		code, err = a.cmdOrder(rest)
+	case "bind":
+		code, err = a.cmdBind(rest)
+	case "unbind":
+		code, err = a.cmdUnbind(rest)
+	case "here":
+		code, err = a.cmdHere(rest)
+	case "history":
+		code, err = a.cmdHistory(rest)
+	case "update":
+		code, err = a.cmdUpdate(rest)
+	case "hook":
+		code, err = a.cmdHook(rest)
+	case "completion":
+		code, err = a.cmdCompletion(rest)
+	case "man":
+		code, err = a.cmdMan(rest)
+	case "_accounts":
+		code, err = a.cmdAccountsComplete(rest)
 	case "sync":
 		code, err = a.cmdSync(rest)
 	case "serve":

@@ -160,8 +160,10 @@ func (a *app) switchTo(st *toolState, target *meta) error {
 	return nil
 }
 
-// pickBest applies soonest-reset: among accounts with room in both windows, the one
-// whose weekly limit resets first (its leftover quota would be lost soonest).
+// pickBest picks the account for 'switch <tool>' without a name: the first available
+// one in the order that applies here (.arl or the default order), else soonest-reset:
+// the available account whose weekly limit resets first (its leftover quota would be
+// lost soonest).
 func (a *app) pickBest(st *toolState) (*meta, string, error) {
 	now := a.now()
 	_, all, err := a.collect([]*tool{st.tool}, refreshStale)
@@ -169,17 +171,14 @@ func (a *app) pickBest(st *toolState) (*meta, string, error) {
 		return nil, "", err
 	}
 	views := all[st.tool]
-	var best *accountView
-	for _, v := range views {
-		if !v.available(now) {
-			continue
-		}
-		if best == nil || v.betterThan(best) {
-			best = v
-		}
-	}
+	s := a.loadSettings()
+	order, where := a.orderFor(st.tool, a.cwd(), s)
+	best := choose(views, order, s[st.tool.name].limitFrac(), "")
 	if best == nil {
 		msg := fmt.Sprintf("every %s account is at its limit", st.tool.name)
+		if len(order) > 0 {
+			msg = fmt.Sprintf("every %s account allowed here (%s) is at its limit", st.tool.name, strings.Join(order, ", "))
+		}
 		var first *time.Time
 		firstName := ""
 		for _, v := range views {
@@ -192,6 +191,9 @@ func (a *app) pickBest(st *toolState) (*meta, string, error) {
 			hint = fmt.Sprintf("'%s' frees up in %s (%s)", firstName, fmtDur(first.Sub(now)), fmtWhen(*first, now))
 		}
 		return nil, "", &runtimeError{msg, hint}
+	}
+	if len(order) > 0 {
+		return best.meta, "first with room in " + where, nil
 	}
 	why := "has room"
 	if w := best.limit("seven_day"); w != nil && w.ResetsAt != nil {
