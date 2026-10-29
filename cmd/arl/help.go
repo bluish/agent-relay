@@ -181,7 +181,7 @@ Usage:
 
 Serves the dashboard at / and the hub API (POST /api/report, GET /api/state).
 Listens on 127.0.0.1:8318 by default; publish it on your tailnet with
-'tailscale serve --bg 8318'. There is no authentication: keep it private.
+'tailscale serve --bg --set-path=/arl 8318'. There is no authentication: keep it private.
 State is kept in ~/.local/state/agent-relay/hub.json.
 `,
 	"help": `arl help - show help

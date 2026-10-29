@@ -37,7 +37,7 @@
   .win { display: grid; grid-template-columns: 64px 1fr 48px; gap: 10px; align-items: center; margin: 4px 0; }
   .win .label { color: var(--dim); }
   .win .pct { text-align: right; }
-  .meter { position: relative; height: 8px; border-radius: 4px; background: var(--bg); overflow: hidden; }
+  .meter { position: relative; height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--line) 45%, transparent); overflow: hidden; }
   .meter > i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; }
   .reset { grid-column: 2 / 4; margin-top: -2px; }
   .empty { color: var(--dim); padding: 24px 0; }
@@ -56,6 +56,8 @@
 </main>
 <script>
 const $ = (s) => document.querySelector(s);
+// Works at / and under a path prefix (e.g. tailscale serve --set-path=/arl), with or without a trailing slash.
+const api = (p) => location.pathname.replace(/\/?$/, "/") + "api/" + p;
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 function dur(ms) {
@@ -118,7 +120,7 @@ function tool(t) {
 
 async function load() {
   try {
-    const st = await (await fetch("api/state", { cache: "no-store" })).json();
+    const st = await (await fetch(api("state"), { cache: "no-store" })).json();
     $("#machines").innerHTML = st.machines.map((m) => {
       const ago = new Date() - new Date(m.seen_at);
       return `<span class="chip ${ago < 10 * 60e3 ? "on" : ""}" title="arl ${esc(m.version)}"><span class="dot"></span>${esc(m.name)} · ${dur(ago)} ago</span>`;
@@ -133,7 +135,7 @@ async function load() {
 
 async function theme() {
   try {
-    const c = await (await fetch("api/theme")).json();
+    const c = await (await fetch(api("theme"))).json();
     const map = { bg: "background", panel: "lighter_background", line: "muted", fg: "bright_foreground", dim: "foreground", accent: "accent", green: "green", yellow: "yellow", red: "red" };
     for (const [v, k] of Object.entries(map)) if (c[k]) document.documentElement.style.setProperty(`--${v}`, c[k]);
     if (c.mode === "light") document.documentElement.style.colorScheme = "light";

@@ -90,13 +90,13 @@ With several machines, run the hub on one of them:
 
 ```
 arl serve                          # 127.0.0.1:8318, see contrib/arl-hub.service
-tailscale serve --bg --https=443 8318
+tailscale serve --bg --https=443 --set-path=/arl 8318
 ```
 
 and point the others at it:
 
 ```
-echo https://<machine>.<tailnet>.ts.net > ~/.config/agent-relay/hub
+echo https://<machine>.<tailnet>.ts.net/arl > ~/.config/agent-relay/hub
 arl sync                           # see contrib/ for a launchd agent
 ```
 
