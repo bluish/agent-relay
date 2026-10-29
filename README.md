@@ -68,7 +68,23 @@ arl list                     # accounts, no network
 arl status                   # checks nothing reroutes the CLIs
 ```
 
-`arl help <command>` documents every command. Output follows
+### Which account, where
+
+```
+arl mode claude auto 95                      # switch on your own at 95% (or: notify)
+arl order claude personal                    # outside bound directories: only personal
+cd ~/work && arl bind claude work personal   # here: work first, then personal
+eval "$(arl hook zsh)"                       # follow bindings on cd, plus completions
+```
+
+The first account in the applicable order with room wins: for `arl switch
+<tool>` without a name, for auto mode, and for the shell hook. Because a switch
+moves every session on the machine, the hook only switches when no session of
+that tool is running, and tells you otherwise.
+
+`arl history` shows how much of a weekly quota each account used per day.
+
+`arl help <command>` documents every command; `arl man` prints a man page. Output follows
 [clig.dev](https://clig.dev): `--json` where it makes sense, `NO_COLOR`,
 errors on stderr, exit code 2 for usage errors.
 
@@ -100,10 +116,19 @@ echo https://<machine>.<tailnet>.ts.net/arl > ~/.config/agent-relay/hub
 arl sync                           # see contrib/ for a launchd agent
 ```
 
+Publish builds on the hub with `make publish`; other machines pick them up with
+`arl update` (or `arl sync --update` from their timer).
+
 Machines share usage readings, never logins or tokens. The same account signed
 in on several machines counts once, so every machine knows every account's
 usage, and the dashboard at `/` shows all accounts, where each one is active,
 and the forecast. The hub has no authentication; keep it on a private network.
+
+### T3 Code
+
+The hub speaks enough of CLIProxyAPI's management API for T3 Code's
+**Settings → Providers → Usage providers → Add hub**: use the hub URL and any
+management key. T3 then shows every account's limits, not just the active one.
 
 ## Omarchy
 
