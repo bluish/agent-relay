@@ -114,12 +114,13 @@ struct ToolSection: View {
                     }
                 }
             }
-            VStack(spacing: 12) {
+            VStack(spacing: 2) {
                 ForEach(tool.accounts) { account in
                     AccountRow(tool: tool, account: account, days: history?.accounts[account.name], dayNames: history?.days ?? [])
                 }
             }
-            .padding(.leading, 34)
+            .padding(.leading, 26)
+            .padding(.trailing, -8)
         }
     }
 }
@@ -175,28 +176,41 @@ struct AccountRow: View {
     let account: Account
     let days: [Double]?
     let dayNames: [String]
+    @State private var hovering = false
+
+    private var switching: Bool { store.switching == "\(tool.tool):\(account.name)" }
 
     var body: some View {
+        // Like the Wi-Fi menu: an inactive account is a row you click to switch to.
+        Button {
+            if !account.active && store.switching == nil {
+                store.use(account.name, for: tool.tool)
+            }
+        } label: {
+            content
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(.primary.opacity(hovering && !account.active ? 0.07 : 0))
+                }
+                .contentShape(.rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .help(account.active ? "\(account.name) is the active \(tool.title) account" : "Switch \(tool.title) to \(account.name)")
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
-                Circle()
-                    .fill(account.active ? Color.green : Color.secondary.opacity(0.35))
-                    .frame(width: 6, height: 6)
                 Text(account.name).font(.callout.weight(.medium))
                 if let plan = account.plan, !plan.isEmpty {
                     Text(plan).font(.caption).foregroundStyle(.tertiary)
                 }
                 Spacer()
-                if account.active {
-                    Text("In use").font(.caption).foregroundStyle(.secondary)
-                } else if store.switching == "\(tool.tool):\(account.name)" {
-                    ProgressView().controlSize(.mini)
-                } else {
-                    Button("Use") { store.use(account.name, for: tool.tool) }
-                        .glassButton()
-                        .controlSize(.mini)
-                        .help("Make \(account.name) the active \(tool.title) account")
-                }
+                trailing
             }
             ForEach(account.limits) { limit in
                 Meter(limit: limit)
@@ -210,6 +224,23 @@ struct AccountRow: View {
             if let error = account.error {
                 Text(error).font(.caption2).foregroundStyle(.orange).lineLimit(2)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var trailing: some View {
+        if account.active {
+            Image(systemName: "checkmark.circle.fill")
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, Color.accentColor)
+                .font(.system(size: 14))
+        } else if switching {
+            ProgressView().controlSize(.mini)
+        } else if hovering {
+            Label("Switch", systemImage: "arrow.left.arrow.right")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(Color.accentColor)
+                .transition(.opacity)
         }
     }
 }
