@@ -127,6 +127,17 @@ The hub speaks enough of CLIProxyAPI's management API for T3 Code's
 **Settings → Providers → Usage providers → Add hub**: use the hub URL and any
 management key. T3 then shows every account's limits, not just the active one.
 
+## macOS menu bar
+
+`macos/` is a SwiftUI menu bar app (macOS 27+, Liquid Glass) that shows the
+same panel: pooled quota and outlook per tool, every account's session and
+weekly windows, a **Use** button per account (`arl switch`), and the dashboard
+link. It reads everything through the `arl` CLI.
+
+```
+macos/build.sh --open     # builds and installs ~/Applications/Agent Relay.app
+```
+
 ## Omarchy
 
 `arl omarchy` writes the Agents panel records for [Omarchy](https://omarchy.org)
