@@ -68,19 +68,16 @@ arl list                     # accounts, no network
 arl status                   # checks nothing reroutes the CLIs
 ```
 
-### Which account, where
+### When an account runs out
 
 ```
-arl mode claude auto 95                      # switch on your own at 95% (or: notify)
-arl order claude personal                    # outside bound directories: only personal
-cd ~/work && arl bind claude work personal   # here: work first, then personal
-eval "$(arl hook zsh)"                       # follow bindings on cd, plus completions
+arl mode claude notify 95     # desktop notification at 95% naming the next account
+arl order claude personal     # accounts 'arl switch claude' and notifications may pick
+eval "$(arl completion zsh)"  # completions (zsh, bash, fish)
 ```
 
-The first account in the applicable order with room wins: for `arl switch
-<tool>` without a name, for auto mode, and for the shell hook. Because a switch
-moves every session on the machine, the hook only switches when no session of
-that tool is running, and tells you otherwise.
+`mode auto` switches by itself instead; a switch moves every session on the
+machine to the new account.
 
 `arl history` shows how much of a weekly quota each account used per day.
 

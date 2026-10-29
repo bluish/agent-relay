@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,10 +14,8 @@ import (
 //
 //	claude.mode = auto        # manual | notify | auto
 //	claude.threshold = 95     # percent of a window that counts as "at the limit"
-//	claude.order = personal   # accounts allowed outside bound directories, in order
+//	claude.order = personal   # accounts 'arl switch' and notifications may pick, in order
 //
-// A directory can override the order with a .arl file ('claude = work personal'),
-// which applies to it and everything below it.
 
 const (
 	modeManual = "manual"
@@ -26,7 +23,6 @@ const (
 	modeAuto   = "auto"
 
 	defaultThreshold = 95
-	ruleFile         = ".arl"
 )
 
 type toolConfig struct {
@@ -102,56 +98,9 @@ func (c *toolConfig) limitFrac() float64 {
 	return float64(c.Threshold) / 100
 }
 
-// ----------------------------------------------------------------------------- directory rules
-
-type rule struct {
-	path  string
-	order []string
-}
-
-func parseRules(text string) map[string][]string {
-	out := map[string][]string{}
-	for _, line := range strings.Split(text, "\n") {
-		line, _, _ = strings.Cut(line, "#")
-		k, v, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		var names []string
-		for _, n := range strings.Fields(strings.ReplaceAll(v, ",", " ")) {
-			if nameRe.MatchString(n) {
-				names = append(names, n)
-			}
-		}
-		if t := strings.TrimSpace(k); len(names) > 0 {
-			out[t] = names
-		}
-	}
-	return out
-}
-
-// dirRule finds the nearest .arl (walking up from dir) that names an order for the tool.
-func dirRule(t *tool, dir string) *rule {
-	for d := filepath.Clean(dir); ; d = filepath.Dir(d) {
-		if b, err := os.ReadFile(filepath.Join(d, ruleFile)); err == nil {
-			if order := parseRules(string(b))[t.name]; len(order) > 0 {
-				return &rule{path: filepath.Join(d, ruleFile), order: order}
-			}
-		}
-		if filepath.Dir(d) == d {
-			return nil
-		}
-	}
-}
-
-// orderFor is the account order that applies in dir: its .arl, else the configured
-// default, else nil (every account, soonest reset first). where says which applied.
-func (a *app) orderFor(t *tool, dir string, s settings) (order []string, where string) {
-	if dir != "" {
-		if r := dirRule(t, dir); r != nil {
-			return r.order, r.path
-		}
-	}
+// orderFor is the configured account order, or nil (every account, soonest reset
+// first). where names the file it came from.
+func (a *app) orderFor(t *tool, s settings) (order []string, where string) {
 	if o := s[t.name].Order; len(o) > 0 {
 		return o, a.configPath()
 	}
@@ -194,12 +143,7 @@ func choose(views []*accountView, order []string, limit float64, skip string) *a
 	return best
 }
 
-func (a *app) cwd() string {
-	d, _ := os.Getwd()
-	return d
-}
-
-// ----------------------------------------------------------------------------- mode / order / bind
+// ----------------------------------------------------------------------------- mode / order
 
 func (a *app) cmdMode(args []string) (int, error) {
 	_, pos, help, err := parseFlags("mode", args, nil)
@@ -316,177 +260,6 @@ func (a *app) cmdOrder(args []string) (int, error) {
 		fmt.Fprintf(a.stdout, "%s: outside bound directories use %s\n", t.name, strings.Join(s[t.name].Order, ", then "))
 	}
 	return exitOK, nil
-}
-
-func (a *app) cmdBind(args []string) (int, error) {
-	_, pos, help, err := parseFlags("bind", args, nil)
-	if err != nil {
-		return 0, err
-	}
-	if help {
-		fmt.Fprint(a.stdout, helpText["bind"])
-		return exitOK, nil
-	}
-	if len(pos) < 2 {
-		return 0, &usageError{"usage: arl bind <tool> <account> [account...]"}
-	}
-	t, err := parseTool(pos[0])
-	if err != nil {
-		return 0, err
-	}
-	if err := a.checkAccounts(t, pos[1:]); err != nil {
-		return 0, err
-	}
-	path := filepath.Join(a.cwd(), ruleFile)
-	rules := map[string][]string{}
-	if b, err := os.ReadFile(path); err == nil {
-		rules = parseRules(string(b))
-	}
-	rules[t.name] = pos[1:]
-	if err := writeRules(path, rules); err != nil {
-		return 0, err
-	}
-	fmt.Fprintf(a.stdout, "%s: %s uses %s\n", t.name, filepath.Dir(path), strings.Join(pos[1:], ", then "))
-	return exitOK, nil
-}
-
-func (a *app) cmdUnbind(args []string) (int, error) {
-	_, pos, help, err := parseFlags("unbind", args, nil)
-	if err != nil {
-		return 0, err
-	}
-	if help {
-		fmt.Fprint(a.stdout, helpText["unbind"])
-		return exitOK, nil
-	}
-	path := filepath.Join(a.cwd(), ruleFile)
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return 0, &runtimeError{"no " + ruleFile + " in this directory", ""}
-	}
-	rules := parseRules(string(b))
-	if len(pos) == 0 {
-		rules = map[string][]string{}
-	}
-	for _, p := range pos {
-		t, err := parseTool(p)
-		if err != nil {
-			return 0, err
-		}
-		delete(rules, t.name)
-	}
-	if len(rules) == 0 {
-		if err := os.Remove(path); err != nil {
-			return 0, err
-		}
-		fmt.Fprintf(a.stdout, "removed %s\n", path)
-		return exitOK, nil
-	}
-	if err := writeRules(path, rules); err != nil {
-		return 0, err
-	}
-	fmt.Fprintf(a.stdout, "updated %s\n", path)
-	return exitOK, nil
-}
-
-func writeRules(path string, rules map[string][]string) error {
-	var b strings.Builder
-	b.WriteString("# agent-relay: accounts to use here, in order (see 'arl help bind')\n")
-	for _, t := range allTools {
-		if order := rules[t.name]; len(order) > 0 {
-			fmt.Fprintf(&b, "%s = %s\n", t.name, strings.Join(order, " "))
-		}
-	}
-	return writeFileAtomic(path, []byte(b.String()), 0o644)
-}
-
-// ----------------------------------------------------------------------------- here
-
-// cmdHere shows (and with --apply, follows) the account order for the current directory.
-// It runs from the shell hook on every directory change, so it stays quiet and offline.
-func (a *app) cmdHere(args []string) (int, error) {
-	o, pos, help, err := parseFlags("here", args, []flagSpec{{name: "--apply"}, {name: "--quiet"}})
-	if err != nil {
-		return 0, err
-	}
-	if help {
-		fmt.Fprint(a.stdout, helpText["here"])
-		return exitOK, nil
-	}
-	tools, err := toolsFrom(pos)
-	if err != nil {
-		return 0, err
-	}
-	quiet, apply := o["--quiet"] != "", o["--apply"] != ""
-	s := a.loadSettings()
-	dir := a.cwd()
-	activeNames := a.readActive()
-	for _, t := range tools {
-		order, where := a.orderFor(t, dir, s)
-		if apply && quiet && len(order) == 0 {
-			continue // the hook runs on every cd: nothing to do without an order
-		}
-		// Cheap first: account files, cached readings and active.json (no Keychain).
-		cheap := &toolState{tool: t, accounts: a.accounts(t)}
-		if len(cheap.accounts) == 0 {
-			continue
-		}
-		active := activeNames[t.name]
-		cheap.active = findAccount(cheap.accounts, active)
-		views := a.usageViewsMode(cheap, cachedOnly)
-		want := choose(views, order, s[t.name].limitFrac(), "")
-		if active == "" {
-			active = "none"
-		}
-		if !quiet {
-			rule := "any account, soonest reset first"
-			if len(order) > 0 {
-				rule = strings.Join(order, " → ") + "  (" + where + ")"
-			}
-			target := "nothing available"
-			if want != nil {
-				target = want.meta.Name
-			}
-			fmt.Fprintf(a.stdout, "%-7s order %s\n        active %s, wants %s\n", t.name, rule, active, target)
-		}
-		if !apply || want == nil || active == want.meta.Name || len(order) == 0 {
-			continue
-		}
-		if n := a.running(t); n > 0 {
-			fmt.Fprintf(a.stderr, "arl: here %s uses '%s', but %d %s session%s on '%s' %s running; switch with: arl switch %s %s\n",
-				t.name, want.meta.Name, n, t.title, map[bool]string{true: "", false: "s"}[n == 1], active, map[bool]string{true: "is", false: "are"}[n == 1], t.name, want.meta.Name)
-			continue
-		}
-		st, err := a.loadState(t)
-		if err != nil {
-			return 0, err
-		}
-		if st.active != nil && st.active.Name == want.meta.Name {
-			continue
-		}
-		if err := a.switchTo(st, want.meta); err != nil {
-			return 0, err
-		}
-		fmt.Fprintf(a.stderr, "arl: %s now uses '%s' here (was '%s')\n", t.name, want.meta.Name, active)
-	}
-	return exitOK, nil
-}
-
-// readActive reads the active account per tool from active.json (written on every change).
-func (a *app) readActive() map[string]string {
-	out := map[string]string{}
-	if b, err := os.ReadFile(filepath.Join(a.stateDir(), "active.json")); err == nil {
-		_ = json.Unmarshal(b, &out)
-	}
-	return out
-}
-
-// running counts processes of the tool's CLI (any session that a switch would move).
-func (a *app) running(t *tool) int {
-	if a.countProcs == nil {
-		return 0
-	}
-	return a.countProcs(t.bin)
 }
 
 // ----------------------------------------------------------------------------- auto / notify

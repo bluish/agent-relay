@@ -161,7 +161,7 @@ func (a *app) switchTo(st *toolState, target *meta) error {
 }
 
 // pickBest picks the account for 'switch <tool>' without a name: the first available
-// one in the order that applies here (.arl or the default order), else soonest-reset:
+// one in the configured order, else soonest-reset:
 // the available account whose weekly limit resets first (its leftover quota would be
 // lost soonest).
 func (a *app) pickBest(st *toolState) (*meta, string, error) {
@@ -172,12 +172,12 @@ func (a *app) pickBest(st *toolState) (*meta, string, error) {
 	}
 	views := all[st.tool]
 	s := a.loadSettings()
-	order, where := a.orderFor(st.tool, a.cwd(), s)
+	order, where := a.orderFor(st.tool, s)
 	best := choose(views, order, s[st.tool.name].limitFrac(), "")
 	if best == nil {
 		msg := fmt.Sprintf("every %s account is at its limit", st.tool.name)
 		if len(order) > 0 {
-			msg = fmt.Sprintf("every %s account allowed here (%s) is at its limit", st.tool.name, strings.Join(order, ", "))
+			msg = fmt.Sprintf("every %s account in the order (%s) is at its limit", st.tool.name, strings.Join(order, ", "))
 		}
 		var first *time.Time
 		firstName := ""
@@ -193,7 +193,7 @@ func (a *app) pickBest(st *toolState) (*meta, string, error) {
 		return nil, "", &runtimeError{msg, hint}
 	}
 	if len(order) > 0 {
-		return best.meta, "first with room in " + where, nil
+		return best.meta, "first with room in the order (" + where + ")", nil
 	}
 	why := "has room"
 	if w := best.limit("seven_day"); w != nil && w.ResetsAt != nil {

@@ -474,21 +474,6 @@ func TestChooseOrder(t *testing.T) {
 	}
 }
 
-func TestDirRules(t *testing.T) {
-	root := t.TempDir()
-	deep := filepath.Join(root, "work", "repo", "pkg")
-	_ = os.MkdirAll(deep, 0o755)
-	_ = os.WriteFile(filepath.Join(root, "work", ".arl"), []byte("# x\nclaude = work, personal\n"), 0o644)
-	r := dirRule(claudeTool, deep)
-	if r == nil || strings.Join(r.order, " ") != "work personal" {
-		t.Fatalf("rule = %+v", r)
-	}
-	if dirRule(codexTool, deep) != nil {
-		t.Fatal("codex has no rule")
-	}
-}
-
-// setupTwo registers work (active) and personal on linux.
 func setupTwo(t *testing.T) *harness {
 	h := newHarness(t, "linux")
 	h.setLive("work")
@@ -527,25 +512,6 @@ func TestWatchNotifiesOnce(t *testing.T) {
 	}
 	if h.liveWho() != "work" || len(notes) != 1 {
 		t.Fatalf("notify mode must not switch and must notify once: live=%s notes=%v", h.liveWho(), notes)
-	}
-}
-
-func TestHereApply(t *testing.T) {
-	h := setupTwo(t)
-	dir := filepath.Join(h.a.home, "personal-stuff")
-	_ = os.MkdirAll(dir, 0o755)
-	_ = os.WriteFile(filepath.Join(dir, ".arl"), []byte("claude = personal\n"), 0o644)
-	old, _ := os.Getwd()
-	defer os.Chdir(old)
-	_ = os.Chdir(dir)
-
-	h.a.countProcs = func(string) int { return 1 }
-	if h.run("here", "--apply", "--quiet"); h.liveWho() != "work" || !strings.Contains(h.err.String(), "running") {
-		t.Fatalf("must not switch under a running session: live=%s err=%q", h.liveWho(), h.err)
-	}
-	h.a.countProcs = func(string) int { return 0 }
-	if h.run("here", "--apply", "--quiet"); h.liveWho() != "personal" {
-		t.Fatalf("want personal here: live=%s err=%q", h.liveWho(), h.err)
 	}
 }
 

@@ -11,11 +11,9 @@ Examples:
   arl add claude work          Register the current Claude login as "work"
   arl add claude personal      Sign in another account and keep it as "personal"
   arl switch claude personal   Make "personal" the active Claude account
-  arl switch claude            Pick the next account (directory order, else soonest reset)
-  arl mode claude auto 95      Switch on your own when the active account hits 95%
-  cd ~/work && arl bind claude work personal
-                               Here: work first, then personal
-  arl order claude personal    Everywhere else: only personal
+  arl switch claude            Pick the next account (configured order, else soonest reset)
+  arl mode claude notify 95    Get notified when the active account hits 95%
+  arl order claude personal    Only ever pick "personal" automatically
   arl usage                    Limits of every account, and when the pool runs dry
   arl history                  Quota used per day this week
 
@@ -29,15 +27,11 @@ Commands:
   status                    Check logins and that nothing reroutes the CLIs
 
   mode [tool] [mode] [n]    manual, notify or auto-switch at n% (default 95)
-  order <tool> <account...> Accounts to use outside bound directories, in order
-  bind <tool> <account...>  Accounts to use in this directory tree, in order
-  unbind [tool]             Remove this directory's binding
-  here                      Show the order that applies here
+  order <tool> <account...> Accounts 'switch <tool>' and notifications pick, in order
 
   sync                      Exchange usage readings with the hub
   serve                     Run the hub and its dashboard
   update                    Replace arl with the hub's build
-  hook zsh|bash|fish        Shell hook: follow directory bindings, completions
   completion zsh|bash|fish  Completions only
   man                       Print the man page
   help [command]            Show help for arl or a command
@@ -217,48 +211,19 @@ Examples:
   arl mode claude auto 95
   arl mode codex notify
 `,
-	"order": `arl order - accounts to use outside bound directories
+	"order": `arl order - which accounts to pick, in order
 
 Usage:
   arl order [tool] [account...]
   arl order <tool> --clear
 
-The default order: which accounts 'arl switch <tool>', auto mode and the shell
-hook may use, first one with room wins. Directories bound with 'arl bind'
-override it. Without an order every account is allowed, soonest reset first.
+The accounts 'arl switch <tool>' (without a name), notifications and auto mode
+may pick; the first one with room wins. Without an order every account is
+allowed, soonest reset first.
 
 Examples:
-  arl order claude personal      # outside ~/work, never the work account
+  arl order claude personal      # never suggest the work account
   arl order                      # show
-`,
-	"bind": `arl bind - accounts to use in this directory tree
-
-Usage:
-  arl bind <tool> <account> [account...]
-
-Writes a .arl file here: in this directory and below, the first account in the
-list with room is the one to use. With the shell hook ('arl hook'), entering
-the tree switches to it, unless sessions on another account are running (then
-it tells you instead, since a switch moves every session on this machine).
-
-Examples:
-  cd ~/work && arl bind claude work personal
-`,
-	"unbind": `arl unbind - remove this directory's binding
-
-Usage:
-  arl unbind [tool]
-
-Removes the tool's line from ./.arl (all of it without a tool).
-`,
-	"here": `arl here - the account order for this directory
-
-Usage:
-  arl here [tool] [--apply] [--quiet]
-
-Shows the order that applies here (.arl, else the default order), the active
-account and the one the order wants. --apply switches when they differ and no
-session of that tool is running; the shell hook runs 'arl here --apply --quiet'.
 `,
 	"history": `arl history - quota used per day
 
@@ -278,24 +243,16 @@ Downloads the hub's build for this OS and architecture and replaces this
 executable when it differs (checked by SHA-256). Publish builds on the hub
 with 'make publish'. 'arl sync --update' does the same quietly.
 `,
-	"hook": `arl hook - shell integration
-
-Usage:
-  arl hook zsh|bash|fish
-
-Prints a hook that runs 'arl here --apply --quiet' on every directory change,
-plus completions. Add to your shell config:
-  zsh:  eval "$(arl hook zsh)"
-  bash: eval "$(arl hook bash)"
-  fish: arl hook fish | source
-`,
 	"completion": `arl completion - shell completions
 
 Usage:
   arl completion zsh|bash|fish
 
-Prints completions for commands, tools, account names and shells, without the
-directory hook.
+Prints completions for commands, tools, account names and shells. Add to your
+shell config:
+  zsh:  eval "$(arl completion zsh)"
+  bash: eval "$(arl completion bash)"
+  fish: arl completion fish | source
 `,
 	"man": `arl man - print the man page
 
