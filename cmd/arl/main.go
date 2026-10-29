@@ -1,4 +1,4 @@
-// Command xorp keeps several Claude Code / Codex subscription logins on one
+// Command arl keeps several Claude Code / Codex subscription logins on one
 // machine and switches the active one in place: the official CLIs (and apps
 // built on them, such as T3 Code) keep using their normal config directory,
 // and pick up the new account on their next request. No proxy is involved.
@@ -57,6 +57,7 @@ func main() {
 		getenv: os.Getenv, home: home, user: user, goos: runtime.GOOS, now: time.Now,
 		lookPath: exec.LookPath, runInteractive: runInteractive, security: runSecurity, fetch: httpGet,
 	}
+	a.migrateLegacy()
 	os.Exit(a.run(os.Args[1:]))
 }
 
@@ -101,7 +102,7 @@ func (a *app) run(args []string) int {
 	case "help":
 		code, err = a.cmdHelp(rest)
 	case "--version", "-V", "version":
-		fmt.Fprintln(a.stdout, "xorp "+version)
+		fmt.Fprintln(a.stdout, "arl "+version)
 	case "switch", "use":
 		code, err = a.cmdSwitch(rest)
 	case "add":
@@ -122,7 +123,7 @@ func (a *app) run(args []string) int {
 		code, err = a.cmdOmarchy(rest)
 	default:
 		if strings.HasPrefix(cmd, "-") {
-			a.errorf("run 'xorp --help' for usage", "unknown option '%s'", cmd)
+			a.errorf("run 'arl --help' for usage", "unknown option '%s'", cmd)
 			return exitUsage
 		}
 		return a.unknownCommand(cmd)
@@ -131,7 +132,7 @@ func (a *app) run(args []string) int {
 	var re *runtimeError
 	switch {
 	case errors.As(err, &ue):
-		a.errorf(fmt.Sprintf("run 'xorp %s --help' for usage", cmd), "%s", ue.msg)
+		a.errorf(fmt.Sprintf("run 'arl %s --help' for usage", cmd), "%s", ue.msg)
 		return exitUsage
 	case errors.As(err, &re):
 		a.errorf(re.hint, "%s", re.msg)
@@ -146,7 +147,7 @@ func (a *app) run(args []string) int {
 // ----------------------------------------------------------------------------- output helpers
 
 func colorAllowed(getenv func(string) string, tty, flagOff bool) bool {
-	if flagOff || getenv("NO_COLOR") != "" || getenv("XORP_NO_COLOR") != "" || getenv("TERM") == "dumb" {
+	if flagOff || getenv("NO_COLOR") != "" || getenv("ARL_NO_COLOR") != "" || getenv("TERM") == "dumb" {
 		return false
 	}
 	return tty
@@ -173,14 +174,14 @@ func (a *app) outStyle(noColor bool) style {
 func (a *app) errStyle() style { return style{colorAllowed(a.getenv, a.stderrTTY, false)} }
 
 func (a *app) errorf(hint, format string, args ...any) {
-	fmt.Fprintf(a.stderr, "%s %s\n", a.errStyle().red("xorp: error:"), fmt.Sprintf(format, args...))
+	fmt.Fprintf(a.stderr, "%s %s\n", a.errStyle().red("arl: error:"), fmt.Sprintf(format, args...))
 	if hint != "" {
 		fmt.Fprintf(a.stderr, "  %s\n", hint)
 	}
 }
 
 func (a *app) note(format string, args ...any) {
-	fmt.Fprintf(a.stderr, "%s %s\n", a.errStyle().yellow("xorp:"), fmt.Sprintf(format, args...))
+	fmt.Fprintf(a.stderr, "%s %s\n", a.errStyle().yellow("arl:"), fmt.Sprintf(format, args...))
 }
 
 // ----------------------------------------------------------------------------- help
@@ -202,7 +203,7 @@ func (a *app) unknownCommand(name string) int {
 	if s := suggest(name, commands); s != "" {
 		msg += fmt.Sprintf(" Did you mean '%s'?", s)
 	}
-	a.errorf("run 'xorp --help' to see the commands", "%s", msg)
+	a.errorf("run 'arl --help' to see the commands", "%s", msg)
 	return exitUsage
 }
 
@@ -280,7 +281,7 @@ func parseFlags(cmd string, args []string, specs []flagSpec) (map[string]string,
 			}
 		}
 		if spec == nil {
-			msg := fmt.Sprintf("unknown option '%s' for 'xorp %s'", name, cmd)
+			msg := fmt.Sprintf("unknown option '%s' for 'arl %s'", name, cmd)
 			if s := suggest(name, names); s != "" {
 				msg += fmt.Sprintf(". Did you mean '%s'?", s)
 			}

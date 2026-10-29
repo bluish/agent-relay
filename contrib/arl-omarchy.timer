@@ -1,5 +1,5 @@
 [Unit]
-Description=Refresh xorp account usage for the Omarchy Agents panel
+Description=Refresh arl account usage for the Omarchy Agents panel
 
 [Timer]
 OnBootSec=1min

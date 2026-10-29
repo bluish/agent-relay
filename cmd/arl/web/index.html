@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>xorp</title>
+<title>agent-relay</title>
 <style>
   :root {
     --bg: #1a1b26; --panel: #24283b; --line: #414868; --fg: #c0caf5; --dim: #8089b3;
@@ -48,7 +48,7 @@
 <body>
 <main>
   <header>
-    <h1>xorp</h1>
+    <h1>agent-relay</h1>
     <div class="machines" id="machines"></div>
   </header>
   <div id="tools"><p class="empty">Loading…</p></div>
@@ -121,10 +121,10 @@ async function load() {
     const st = await (await fetch("api/state", { cache: "no-store" })).json();
     $("#machines").innerHTML = st.machines.map((m) => {
       const ago = new Date() - new Date(m.seen_at);
-      return `<span class="chip ${ago < 10 * 60e3 ? "on" : ""}" title="xorp ${esc(m.version)}"><span class="dot"></span>${esc(m.name)} · ${dur(ago)} ago</span>`;
+      return `<span class="chip ${ago < 10 * 60e3 ? "on" : ""}" title="arl ${esc(m.version)}"><span class="dot"></span>${esc(m.name)} · ${dur(ago)} ago</span>`;
     }).join("");
     $("#tools").innerHTML = st.tools.length ? st.tools.map(tool).join("")
-      : `<p class="empty">No reports yet. Point machines at this hub (~/.config/xorp/hub) and run <code>xorp sync</code>.</p>`;
+      : `<p class="empty">No reports yet. Point machines at this hub (~/.config/agent-relay/hub) and run <code>arl sync</code>.</p>`;
     $("#foot").textContent = `Updated ${new Date().toLocaleTimeString()} · forecast assumes switching to the soonest-resetting account`;
   } catch (e) {
     $("#foot").textContent = "Hub unreachable: " + e.message;

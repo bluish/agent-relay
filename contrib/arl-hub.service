@@ -1,9 +1,9 @@
 [Unit]
-Description=xorp hub and dashboard
+Description=arl hub and dashboard
 After=network-online.target
 
 [Service]
-ExecStart=%h/.local/bin/xorp serve
+ExecStart=%h/.local/bin/arl serve
 Restart=always
 RestartSec=3
 

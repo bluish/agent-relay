@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- macOS: run 'arl sync' every 3 minutes. Replace USER, then:
+     cp contrib/sh.bluish.arl-sync.plist ~/Library/LaunchAgents/
+     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/sh.bluish.arl-sync.plist -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>sh.bluish.arl-sync</string>
+  <key>ProgramArguments</key>
+  <array><string>/Users/USER/.local/bin/arl</string><string>sync</string></array>
+  <key>StartInterval</key><integer>180</integer>
+  <key>RunAtLoad</key><true/>
+</dict>
+</plist>

@@ -16,10 +16,10 @@ import (
 )
 
 // The hub is optional. Each machine reports its accounts and their latest usage readings
-// ('xorp sync'); the hub merges them by account (the same account signed in on several
+// ('arl sync'); the hub merges them by account (the same account signed in on several
 // machines is one account) and hands the freshest reading of every account back. So a
 // machine knows the usage of an account it has not used lately, and the dashboard
-// ('xorp serve') shows everything in one place. No logins or tokens ever leave a machine.
+// ('arl serve') shows everything in one place. No logins or tokens ever leave a machine.
 
 //go:embed web/index.html
 var dashboardHTML []byte
@@ -27,10 +27,10 @@ var dashboardHTML []byte
 const syncTimeout = 3 * time.Second
 
 func (a *app) hubURL() string {
-	if u := a.getenv("XORP_HUB"); u != "" {
+	if u := a.getenv("ARL_HUB"); u != "" {
 		return strings.TrimRight(u, "/")
 	}
-	b, err := os.ReadFile(filepath.Join(a.home, ".config", "xorp", "hub"))
+	b, err := os.ReadFile(filepath.Join(a.home, ".config", "agent-relay", "hub"))
 	if err != nil {
 		return ""
 	}
@@ -38,10 +38,10 @@ func (a *app) hubURL() string {
 }
 
 func (a *app) machine() string {
-	if m := a.getenv("XORP_MACHINE"); m != "" {
+	if m := a.getenv("ARL_MACHINE"); m != "" {
 		return m
 	}
-	if b, err := os.ReadFile(filepath.Join(a.home, ".config", "xorp", "machine")); err == nil && len(bytes.TrimSpace(b)) > 0 {
+	if b, err := os.ReadFile(filepath.Join(a.home, ".config", "agent-relay", "machine")); err == nil && len(bytes.TrimSpace(b)) > 0 {
 		return string(bytes.TrimSpace(b))
 	}
 	h, _ := os.Hostname()
@@ -177,10 +177,10 @@ func (a *app) cmdSync(args []string) (int, error) {
 		return exitOK, nil
 	}
 	if len(pos) > 0 {
-		return 0, &usageError{fmt.Sprintf("'xorp sync' takes no arguments (got '%s')", pos[0])}
+		return 0, &usageError{fmt.Sprintf("'arl sync' takes no arguments (got '%s')", pos[0])}
 	}
 	if a.hubURL() == "" {
-		return 0, &runtimeError{"no hub configured", "put its URL in ~/.config/xorp/hub (or set XORP_HUB)"}
+		return 0, &runtimeError{"no hub configured", "put its URL in ~/.config/agent-relay/hub (or set ARL_HUB)"}
 	}
 	for _, t := range allTools {
 		if st, err := a.loadState(t); err == nil {
@@ -215,7 +215,7 @@ func (a *app) cmdServe(args []string) (int, error) {
 		return exitOK, nil
 	}
 	if len(pos) > 0 {
-		return 0, &usageError{fmt.Sprintf("'xorp serve' takes no arguments (got '%s')", pos[0])}
+		return 0, &usageError{fmt.Sprintf("'arl serve' takes no arguments (got '%s')", pos[0])}
 	}
 	addr := orDefault(o["--addr"], "127.0.0.1:8318")
 	h := &hubServer{a: a, path: filepath.Join(a.stateDir(), "hub.json"), Accounts: map[string]*hubAccount{}, Machines: map[string]*hubMachine{}}
@@ -230,7 +230,7 @@ func (a *app) cmdServe(args []string) (int, error) {
 	mux.HandleFunc("GET /api/state", h.handleState)
 	mux.HandleFunc("GET /api/theme", h.handleTheme)
 	mux.HandleFunc("POST /api/report", h.handleReport)
-	fmt.Fprintf(a.stderr, "xorp hub listening on http://%s\n", addr)
+	fmt.Fprintf(a.stderr, "arl hub listening on http://%s\n", addr)
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	if err := srv.ListenAndServe(); err != nil {
 		return 0, &runtimeError{err.Error(), ""}

@@ -1,6 +1,0 @@
-[Unit]
-Description=Write xorp account usage into the Omarchy Agents panel
-
-[Service]
-Type=oneshot
-ExecStart=%h/.local/bin/xorp omarchy

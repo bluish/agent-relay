@@ -20,8 +20,8 @@ import (
 //   - the live login: where the official CLI reads it (Claude: ~/.claude/.credentials.json
 //     on Linux, the "Claude Code-credentials" Keychain item on macOS, plus oauthAccount in
 //     ~/.claude.json; Codex: ~/.codex/auth.json);
-//   - the vault: every other registered account, under ~/.local/share/xorp/accounts/<tool>/<name>
-//     (secrets in a 0600 file, or a "xorp-claude-<name>" Keychain item on macOS).
+//   - the vault: every other registered account, under ~/.local/share/agent-relay/accounts/<tool>/<name>
+//     (secrets in a 0600 file, or a "agent-relay-claude-<name>" Keychain item on macOS).
 //
 // A login is always in exactly one of them, never copied: OAuth refresh tokens rotate,
 // so two copies of the same login would invalidate each other.
@@ -59,15 +59,62 @@ func checkName(name string) error {
 
 // ----------------------------------------------------------------------------- paths
 
-func (a *app) xdg(env, fallback string) string {
+const appDir = "agent-relay"
+
+func (a *app) xdgDir(env, fallback, name string) string {
 	if d := a.getenv(env); d != "" && filepath.IsAbs(d) {
-		return filepath.Join(d, "xorp")
+		return filepath.Join(d, name)
 	}
-	return filepath.Join(a.home, fallback, "xorp")
+	return filepath.Join(a.home, fallback, name)
 }
 
-func (a *app) dataDir() string  { return a.xdg("XDG_DATA_HOME", ".local/share") }
-func (a *app) stateDir() string { return a.xdg("XDG_STATE_HOME", ".local/state") }
+func (a *app) dataDir() string  { return a.xdgDir("XDG_DATA_HOME", ".local/share", appDir) }
+func (a *app) stateDir() string { return a.xdgDir("XDG_STATE_HOME", ".local/state", appDir) }
+
+// legacyName is what this tool was called before; its data is moved over once.
+const legacyName = "xorp"
+
+func exists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
+}
+
+// migrateLegacy moves accounts, state, hub settings and Keychain items from the
+// legacy name. Each piece moves only when the new location is still empty.
+func (a *app) migrateLegacy() {
+	for _, d := range [][2]string{{"XDG_DATA_HOME", ".local/share"}, {"XDG_STATE_HOME", ".local/state"}} {
+		old, cur := a.xdgDir(d[0], d[1], legacyName), a.xdgDir(d[0], d[1], appDir)
+		if exists(filepath.Join(old, "accounts")) || exists(filepath.Join(old, "usage")) || exists(filepath.Join(old, "hub.json")) {
+			if !exists(cur) {
+				_ = os.MkdirAll(filepath.Dir(cur), 0o700)
+				_ = os.Rename(old, cur)
+			}
+		}
+	}
+	for _, f := range []string{"hub", "machine"} {
+		old, cur := filepath.Join(a.home, ".config", legacyName, f), filepath.Join(a.home, ".config", appDir, f)
+		if exists(old) && !exists(cur) {
+			_ = os.MkdirAll(filepath.Dir(cur), 0o700)
+			_ = os.Rename(old, cur)
+		}
+	}
+	if a.goos != "darwin" {
+		return
+	}
+	for _, m := range a.accounts(claudeTool) {
+		oldSvc := legacyName + "-claude-" + m.Name
+		b, err := a.kcRead(oldSvc)
+		if err != nil || len(b) == 0 {
+			continue
+		}
+		if cur, _ := a.kcRead(vaultKeychainService(m.Name)); len(cur) == 0 {
+			if a.kcWrite(vaultKeychainService(m.Name), b) != nil {
+				continue
+			}
+		}
+		_ = a.kcDelete(oldSvc)
+	}
+}
 
 func (a *app) accountDir(t *tool, name string) string {
 	return filepath.Join(a.dataDir(), "accounts", t.name, name)
@@ -86,7 +133,7 @@ func (a *app) usesKeychain(t *tool) bool { return t == claudeTool && a.goos == "
 
 const liveKeychainService = "Claude Code-credentials"
 
-func vaultKeychainService(name string) string { return "xorp-claude-" + name }
+func vaultKeychainService(name string) string { return "agent-relay-claude-" + name }
 
 // ----------------------------------------------------------------------------- files
 
@@ -95,7 +142,7 @@ func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".xorp-*")
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".arl-*")
 	if err != nil {
 		return err
 	}

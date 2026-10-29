@@ -19,7 +19,7 @@ var fixedNow = time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
 
 type fakeKeychain map[string][]byte
 
-// security emulates the security(1) subcommands xorp uses.
+// security emulates the security(1) subcommands arl uses.
 func (k fakeKeychain) security(stdin string, args ...string) (string, error) {
 	notFound := errors.New("security: exit status 44 The specified item could not be found in the keychain.")
 	arg := func(flag string) string {
@@ -430,5 +430,25 @@ func TestOutlook(t *testing.T) {
 	dry := fixedNow.Add(24 * time.Hour)
 	if o := (forecast{CapacityPct: 100, PoolEmptyAt: &dry, RefillAt: &reset}).outlook(w); o != "dry Fri 12:00 → Sat 12:00" {
 		t.Errorf("dry: %q", o)
+	}
+}
+
+func TestMigrateLegacy(t *testing.T) {
+	h := newHarness(t, "darwin")
+	old := filepath.Join(h.a.home, ".local", "share", legacyName, "accounts", "claude", "personal")
+	_ = os.MkdirAll(old, 0o700)
+	_ = os.WriteFile(filepath.Join(old, "meta.json"), []byte(`{"id":"p"}`), 0o600)
+	_ = os.MkdirAll(filepath.Join(h.a.home, ".config", legacyName), 0o700)
+	_ = os.WriteFile(filepath.Join(h.a.home, ".config", legacyName, "hub"), []byte("https://hub\n"), 0o600)
+	h.kc["xorp-claude-personal"] = []byte("secret")
+	h.a.migrateLegacy()
+	if m, err := h.a.readMeta(claudeTool, "personal"); err != nil || m.ID != "p" {
+		t.Fatalf("account not migrated: %v %v", m, err)
+	}
+	if h.a.hubURL() != "https://hub" {
+		t.Fatalf("hub = %q", h.a.hubURL())
+	}
+	if string(h.kc["agent-relay-claude-personal"]) != "secret" || h.kc["xorp-claude-personal"] != nil {
+		t.Fatalf("keychain = %v", h.kc)
 	}
 }

@@ -6,7 +6,7 @@ import (
 )
 
 // forecast projects the tool's pooled weekly quota: if you always use the account whose
-// weekly limit resets soonest (what 'xorp switch <tool>' picks), when does the pool run dry
+// weekly limit resets soonest (what 'arl switch <tool>' picks), when does the pool run dry
 // at the current burn rate? The 5-hour window is ignored; the horizon is 10 days.
 type forecast struct {
 	PoolRemainingPct  float64    `json:"pool_remaining_pct"`

@@ -12,9 +12,9 @@ import (
 func (a *app) toolAndName(cmd string, pos []string, needName bool) (*tool, string, error) {
 	switch {
 	case len(pos) == 0:
-		return nil, "", &usageError{fmt.Sprintf("missing tool: 'xorp %s claude|codex%s'", cmd, map[bool]string{true: " <account>", false: " [account]"}[needName])}
+		return nil, "", &usageError{fmt.Sprintf("missing tool: 'arl %s claude|codex%s'", cmd, map[bool]string{true: " <account>", false: " [account]"}[needName])}
 	case len(pos) > 2:
-		return nil, "", &usageError{fmt.Sprintf("too many arguments for 'xorp %s'", cmd)}
+		return nil, "", &usageError{fmt.Sprintf("too many arguments for 'arl %s'", cmd)}
 	}
 	t, err := parseTool(pos[0])
 	if err != nil {
@@ -22,7 +22,7 @@ func (a *app) toolAndName(cmd string, pos []string, needName bool) (*tool, strin
 	}
 	if len(pos) == 1 {
 		if needName {
-			return nil, "", &usageError{fmt.Sprintf("missing account name: 'xorp %s %s <account>'", cmd, t.name)}
+			return nil, "", &usageError{fmt.Sprintf("missing account name: 'arl %s %s <account>'", cmd, t.name)}
 		}
 		return t, "", nil
 	}
@@ -45,7 +45,7 @@ func (a *app) noSuchAccount(st *toolState, name string) error {
 	if s := suggest(name, accountNames(st.accounts)); s != "" {
 		msg += fmt.Sprintf(". Did you mean '%s'?", s)
 	}
-	hint := fmt.Sprintf("see 'xorp list'; add one with 'xorp add %s %s'", st.tool.name, name)
+	hint := fmt.Sprintf("see 'arl list'; add one with 'arl add %s %s'", st.tool.name, name)
 	return &runtimeError{msg, hint}
 }
 
@@ -70,7 +70,7 @@ func (a *app) cmdSwitch(args []string) (int, error) {
 	}
 	if len(st.accounts) == 0 {
 		return 0, &runtimeError{fmt.Sprintf("no %s accounts registered yet", t.name),
-			fmt.Sprintf("register the current login with 'xorp add %s <name>'", t.name)}
+			fmt.Sprintf("register the current login with 'arl add %s <name>'", t.name)}
 	}
 	var target *meta
 	why := ""
@@ -116,7 +116,7 @@ func (a *app) switchTo(st *toolState, target *meta) error {
 			who = "unknown account"
 		}
 		return &runtimeError{fmt.Sprintf("the current %s login (%s) is not registered, switching would lose it", t.name, who),
-			fmt.Sprintf("register it first: xorp add %s <name>", t.name)}
+			fmt.Sprintf("register it first: arl add %s <name>", t.name)}
 	}
 	secret, err := a.vaultSecret(t, target.Name)
 	if err != nil {
@@ -124,7 +124,7 @@ func (a *app) switchTo(st *toolState, target *meta) error {
 	}
 	if len(secret) == 0 {
 		return &runtimeError{fmt.Sprintf("no stored login for '%s'", target.Name),
-			fmt.Sprintf("log it in again: xorp remove %s %s && xorp add %s %s", t.name, target.Name, t.name, target.Name)}
+			fmt.Sprintf("log it in again: arl remove %s %s && arl add %s %s", t.name, target.Name, t.name, target.Name)}
 	}
 	if st.active != nil {
 		live, err := a.liveSecret(t)
@@ -220,7 +220,7 @@ func (a *app) cmdAdd(args []string) (int, error) {
 		return 0, err
 	}
 	if findAccount(st.accounts, name) != nil {
-		return 0, &runtimeError{fmt.Sprintf("%s account '%s' already exists", t.name, name), "pick another name, or 'xorp remove' it first"}
+		return 0, &runtimeError{fmt.Sprintf("%s account '%s' already exists", t.name, name), "pick another name, or 'arl remove' it first"}
 	}
 	stamp := a.now().UTC().Format(time.RFC3339)
 
@@ -274,7 +274,7 @@ func (a *app) cmdAdd(args []string) (int, error) {
 		fmt.Fprintf(a.stdout, "%s: added '%s' (%s), active\n", t.name, name, describe(id))
 	} else {
 		fmt.Fprintf(a.stdout, "%s: added '%s' (%s)\n", t.name, name, describe(id))
-		fmt.Fprintf(a.stderr, "  use it with: xorp switch %s %s\n", t.name, name)
+		fmt.Fprintf(a.stderr, "  use it with: arl switch %s %s\n", t.name, name)
 	}
 	return exitOK, nil
 }
@@ -451,10 +451,10 @@ func (a *app) cmdList(args []string) (int, error) {
 		}
 		lines = append(lines, s.bold(t.title))
 		if len(st.accounts) == 0 {
-			lines = append(lines, "  "+s.dim(fmt.Sprintf("no accounts (add one: xorp add %s <name>)", t.name)))
+			lines = append(lines, "  "+s.dim(fmt.Sprintf("no accounts (add one: arl add %s <name>)", t.name)))
 		}
 		if st.hasLive && st.active == nil {
-			lines = append(lines, "  "+s.yellow("! current login "+describe(st.live)+" is not registered (xorp add "+t.name+" <name>)"))
+			lines = append(lines, "  "+s.yellow("! current login "+describe(st.live)+" is not registered (arl add "+t.name+" <name>)"))
 		}
 		for _, v := range a.usageViews(st, false) {
 			r := row{Tool: t.name, Name: v.meta.Name, Active: v.active, Plan: v.meta.Plan}

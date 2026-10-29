@@ -28,7 +28,7 @@ func (a *app) cmdStatus(args []string) (int, error) {
 		return exitOK, nil
 	}
 	if len(pos) > 0 {
-		return 0, &usageError{fmt.Sprintf("'xorp status' takes no arguments (got '%s')", pos[0])}
+		return 0, &usageError{fmt.Sprintf("'arl status' takes no arguments (got '%s')", pos[0])}
 	}
 	now := a.now()
 	s := a.outStyle(o["--no-color"] != "")
@@ -59,7 +59,7 @@ func (a *app) cmdStatus(args []string) (int, error) {
 			parts = append(parts, "active "+s.green(st.active.Name)+s.dim(" ("+describe(st.live)+")"))
 		case st.hasLive:
 			parts = append(parts, s.yellow("login not registered")+s.dim(" ("+describe(st.live)+")"))
-			checks = append(checks, check{false, fmt.Sprintf("the current %s login is not registered", t.name), fmt.Sprintf("xorp add %s <name>", t.name)})
+			checks = append(checks, check{false, fmt.Sprintf("the current %s login is not registered", t.name), fmt.Sprintf("arl add %s <name>", t.name)})
 		default:
 			parts = append(parts, s.dim("not logged in"))
 		}
@@ -81,7 +81,7 @@ func (a *app) cmdStatus(args []string) (int, error) {
 			}
 			if b, err := a.vaultSecret(t, m.Name); err != nil || len(b) == 0 {
 				checks = append(checks, check{false, fmt.Sprintf("%s account '%s' has no stored login", t.name, m.Name),
-					fmt.Sprintf("xorp remove %s %s && xorp add %s %s", t.name, m.Name, t.name, m.Name)})
+					fmt.Sprintf("arl remove %s %s && arl add %s %s", t.name, m.Name, t.name, m.Name)})
 			}
 		}
 		tj = append(tj, j)
@@ -139,7 +139,7 @@ func (a *app) routingChecks() []check {
 	}
 	for _, k := range []string{"CLAUDE_CONFIG_DIR", "CODEX_HOME"} {
 		if v := a.getenv(k); v != "" {
-			out = append(out, check{false, fmt.Sprintf("%s=%s: this shell does not use the login xorp switches", k, v), "unset it"})
+			out = append(out, check{false, fmt.Sprintf("%s=%s: this shell does not use the login arl switches", k, v), "unset it"})
 		}
 	}
 	if b, err := os.ReadFile(filepath.Join(a.home, ".claude", "settings.json")); err == nil {
@@ -180,7 +180,7 @@ var omarchyStatKeys = []string{"recentDays", "todayPrompts", "todaySessions", "t
 
 // cmdOmarchy writes one record per tool for the Omarchy Agents panel (schemaVersion 1):
 // a row per account and window, the active account and the forecast in the subtitle, and
-// the token stats from Omarchy's own collector. Run by xorp-omarchy.timer.
+// the token stats from Omarchy's own collector. Run by arl-omarchy.timer.
 func (a *app) cmdOmarchy(args []string) (int, error) {
 	_, _, help, err := parseFlags("omarchy", args, nil)
 	if err != nil {
@@ -207,14 +207,14 @@ func (a *app) cmdOmarchy(args []string) (int, error) {
 		fc := computeForecast(views, a.readHistory(t, now.Add(-3*time.Hour)), 3, now)
 		rec := a.omarchyRecord(t, st, views, fc, now)
 		b, _ := json.MarshalIndent(rec, "", "  ")
-		if err := writeFileAtomic(filepath.Join(dir, "xorp-"+t.name+".json"), b, 0o644); err != nil {
+		if err := writeFileAtomic(filepath.Join(dir, "arl-"+t.name+".json"), b, 0o644); err != nil {
 			return 0, err
 		}
 	}
-	// Records from the hub-era collectors.
+	// Records from earlier versions.
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), "hub-") && strings.HasSuffix(e.Name(), ".json") {
+		if (strings.HasPrefix(e.Name(), "hub-") || strings.HasPrefix(e.Name(), legacyName+"-")) && strings.HasSuffix(e.Name(), ".json") {
 			_ = os.Remove(filepath.Join(dir, e.Name()))
 		}
 	}
@@ -262,7 +262,7 @@ func (a *app) omarchyRecord(t *tool, st *toolState, views []*accountView, fc for
 		}
 	}
 	rec := map[string]any{
-		"schemaVersion": 1, "id": "xorp-" + t.name, "name": t.title,
+		"schemaVersion": 1, "id": "arl-" + t.name, "name": t.title,
 		"updatedAt": now.UTC().Format(time.RFC3339), "ready": len(limits) > 0, "scope": "account",
 		"tierLabel": strings.Join(tier, " · "),
 		// The panel treats a non-empty status as an error and shows authHelpText.

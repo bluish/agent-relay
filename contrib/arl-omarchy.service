@@ -1,0 +1,6 @@
+[Unit]
+Description=Write arl account usage into the Omarchy Agents panel
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/arl omarchy

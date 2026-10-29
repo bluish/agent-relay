@@ -526,10 +526,10 @@ func (a *app) cmdUsage(args []string) (int, error) {
 		}
 		lines = append(lines, forecastHeader(t, fc, s, now))
 		if len(views) == 0 {
-			lines = append(lines, "  "+s.dim(fmt.Sprintf("no accounts (add one: xorp add %s <name>)", t.name)))
+			lines = append(lines, "  "+s.dim(fmt.Sprintf("no accounts (add one: arl add %s <name>)", t.name)))
 		}
 		if st.hasLive && st.active == nil {
-			lines = append(lines, "  "+s.yellow("! current login "+describe(st.live)+" is not registered (xorp add "+t.name+" <name>)"))
+			lines = append(lines, "  "+s.yellow("! current login "+describe(st.live)+" is not registered (arl add "+t.name+" <name>)"))
 		}
 		for _, v := range views {
 			ja := jsonAcct{Name: v.meta.Name, Active: v.active, Plan: v.meta.Plan, Error: v.err, Limits: v.limits}
@@ -548,7 +548,7 @@ func (a *app) cmdUsage(args []string) (int, error) {
 		doc = append(doc, jt)
 	}
 	if o["--json"] != "" {
-		b, _ := json.MarshalIndent(map[string]any{"xorp": version, "generated_at": now.UTC(), "burn_window_hours": burn, "tools": doc}, "", "  ")
+		b, _ := json.MarshalIndent(map[string]any{"arl": version, "generated_at": now.UTC(), "burn_window_hours": burn, "tools": doc}, "", "  ")
 		fmt.Fprintln(a.stdout, string(b))
 		return exitOK, nil
 	}

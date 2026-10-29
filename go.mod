@@ -1,3 +1,3 @@
-module github.com/bluish/xorp
+module github.com/bluish/agent-relay
 
 go 1.26
