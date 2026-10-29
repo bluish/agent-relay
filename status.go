@@ -222,12 +222,17 @@ func (a *app) cmdOmarchy(args []string) (int, error) {
 }
 
 func (a *app) omarchyRecord(t *tool, st *toolState, views []*accountView, fc forecast, now time.Time) map[string]any {
+	// The panel header has room for about 30 characters next to the name.
 	tier := []string{}
 	if st.active != nil {
-		tier = append(tier, "on "+st.active.Name)
+		tier = append(tier, st.active.Name)
 	}
-	if o := fc.outlook(func(t time.Time) string { return shortWhen(t, now) }); o != "" {
-		tier = append(tier, o)
+	switch {
+	case fc.CapacityPct == 0:
+	case fc.runsDry():
+		tier = append(tier, "dry "+shortWhen(*fc.PoolEmptyAt, now))
+	case fc.NextResetAt != nil:
+		tier = append(tier, "resets "+shortWhen(*fc.NextResetAt, now))
 	}
 	var limits []map[string]any
 	var errs []string
@@ -240,11 +245,16 @@ func (a *app) omarchyRecord(t *tool, st *toolState, views []*accountView, fc for
 			if l == nil {
 				continue
 			}
-			title := v.meta.Name + " · " + kn[1]
-			if v.active && len(views) > 1 {
-				title += " (active)"
+			// One account: the panel's own "Session"/"Weekly" titles. Several: the
+			// account name first, with a short window name so it fits the row.
+			title := kn[1]
+			if len(views) > 1 {
+				title = v.meta.Name + " " + map[string]string{"Session": "5h", "Weekly": "week"}[kn[1]]
+				if v.active {
+					title = "• " + title
+				}
 			}
-			row := map[string]any{"label": v.meta.Name + " " + kn[1], "title": title, "percent": l.Used}
+			row := map[string]any{"label": title, "title": title, "percent": l.Used}
 			if l.ResetsAt != nil {
 				row["resetsAt"] = l.ResetsAt.UTC().Format(time.RFC3339)
 			}
@@ -252,7 +262,7 @@ func (a *app) omarchyRecord(t *tool, st *toolState, views []*accountView, fc for
 		}
 	}
 	rec := map[string]any{
-		"schemaVersion": 1, "id": "xorp-" + t.name, "name": "xorp · " + t.title,
+		"schemaVersion": 1, "id": "xorp-" + t.name, "name": t.title,
 		"updatedAt": now.UTC().Format(time.RFC3339), "ready": len(limits) > 0, "scope": "account",
 		"tierLabel": strings.Join(tier, " · "),
 		// The panel treats a non-empty status as an error and shows authHelpText.
