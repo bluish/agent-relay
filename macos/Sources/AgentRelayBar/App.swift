@@ -1,3 +1,4 @@
+import ServiceManagement
 import SwiftUI
 
 @main
@@ -9,6 +10,17 @@ struct AgentRelayBarApp: App {
         let args = CommandLine.arguments
         if let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count {
             Snapshot.render(to: args[i + 1])
+        }
+        // `AgentRelayBar --login-item on|off` registers the app as a login item and exits.
+        if let i = args.firstIndex(of: "--login-item"), i + 1 < args.count {
+            do {
+                if args[i + 1] == "on" { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+                print("login item: \(SMAppService.mainApp.status == .enabled ? "on" : "off")")
+                exit(0)
+            } catch {
+                FileHandle.standardError.write(Data("login item: \(error.localizedDescription)\n".utf8))
+                exit(1)
+            }
         }
     }
 
