@@ -153,3 +153,12 @@ terms for how you use your subscriptions.
 ## License
 
 MIT
+
+## Disclaimer
+
+No warranty, no support, no responsibility. This was built for one desk and
+works there. In plain Portuguese, it's a *gambiarra*: it pokes fan
+controllers, rewrites keyboard firmware and talks to undocumented HID
+endpoints. If your fans stop, your keyboard bricks or your monitor sulks,
+you get to keep both pieces. Read the code before running it as root, and if
+it goes wrong anyway, well, that's a skill issue.
