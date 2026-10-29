@@ -1,0 +1,11 @@
+[Unit]
+Description=xorp hub and dashboard
+After=network-online.target
+
+[Service]
+ExecStart=%h/.local/bin/xorp serve
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

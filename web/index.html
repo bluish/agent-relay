@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>xorp</title>
+<style>
+  :root {
+    --bg: #1a1b26; --panel: #24283b; --line: #414868; --fg: #c0caf5; --dim: #8089b3;
+    --accent: #7aa2f7; --green: #9ece6a; --yellow: #e0af68; --red: #f7768e;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.45 "JetBrainsMono Nerd Font", "JetBrains Mono", ui-monospace, monospace;
+  }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 20px; }
+  h1 { font-size: 20px; margin: 0; color: var(--accent); letter-spacing: .02em; }
+  .machines { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; color: var(--dim); font-size: 12px; white-space: nowrap; }
+  .chip .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; background: var(--dim); vertical-align: 1px; }
+  .chip.on .dot { background: var(--green); }
+  .chip.active { color: var(--accent); border-color: var(--accent); }
+  .tool { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
+  .tool-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+  .tool-head h2 { margin: 0; font-size: 17px; }
+  .big { font-size: 26px; font-weight: 700; }
+  .outlook { margin: 6px 0 14px; color: var(--dim); }
+  .outlook b { color: var(--fg); font-weight: 600; }
+  .ok { color: var(--green); } .warn { color: var(--yellow); } .bad { color: var(--red); }
+  .acct { border-top: 1px solid var(--line); padding: 12px 0 4px; }
+  .acct-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-bottom: 6px; }
+  .acct-head .name { font-weight: 700; }
+  .muted { color: var(--dim); font-size: 12px; }
+  .win { display: grid; grid-template-columns: 64px 1fr 48px; gap: 10px; align-items: center; margin: 4px 0; }
+  .win .label { color: var(--dim); }
+  .win .pct { text-align: right; }
+  .meter { position: relative; height: 8px; border-radius: 4px; background: var(--bg); overflow: hidden; }
+  .meter > i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; }
+  .reset { grid-column: 2 / 4; margin-top: -2px; }
+  .empty { color: var(--dim); padding: 24px 0; }
+  footer { color: var(--dim); font-size: 12px; margin-top: 8px; }
+  @media (max-width: 520px) { .win { grid-template-columns: 56px 1fr 40px; } .big { font-size: 22px; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>xorp</h1>
+    <div class="machines" id="machines"></div>
+  </header>
+  <div id="tools"><p class="empty">Loading…</p></div>
+  <footer id="foot"></footer>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function dur(ms) {
+  let m = Math.max(0, Math.round(ms / 60000));
+  const d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60); m %= 60;
+  if (d) return `${d}d ${h}h`;
+  if (h) return `${h}h ${m}m`;
+  return m ? `${m}m` : "<1m";
+}
+function when(iso) {
+  const t = new Date(iso), now = new Date();
+  const opts = t - now < 20 * 3600e3 && t.getDate() === now.getDate()
+    ? { hour: "2-digit", minute: "2-digit" }
+    : { weekday: "short", hour: "2-digit", minute: "2-digit" };
+  return t.toLocaleString(undefined, opts);
+}
+const level = (used) => used >= 0.95 ? "bad" : used >= 0.8 ? "warn" : "ok";
+const colorOf = (cls) => `var(--${{ ok: "green", warn: "yellow", bad: "red" }[cls]})`;
+
+function outlook(fc) {
+  if (!fc.capacity_pct) return "No weekly data yet.";
+  const burn = `burning ${fc.burn_pct_per_hour.toFixed(1)}%/h` + (fc.burn_source === "week_avg" ? " (week average)" : fc.burn_source === "none" ? " (no data)" : "");
+  if (fc.pool_empty_at) {
+    const back = fc.refill_at ? `, back <b>${when(fc.refill_at)}</b>` : "";
+    return `<span class="warn">Runs dry <b>${when(fc.pool_empty_at)}</b></span> (in ${dur(new Date(fc.pool_empty_at) - new Date())})${back} · ${burn}`;
+  }
+  const reset = fc.next_reset_at ? ` (<b>${when(fc.next_reset_at)}</b>, +${Math.round(fc.next_reset_gain_pct)}%)` : "";
+  return `<span class="ok">Lasts until the reset</span>${reset} · ${burn}`;
+}
+
+function windowRow(label, l) {
+  const cls = level(l.used);
+  const reset = l.resets_at ? `resets in ${dur(new Date(l.resets_at) - new Date())} · ${when(l.resets_at)}` : "not started";
+  return `<div class="win"><span class="label">${label}</span>
+    <div class="meter"><i style="width:${(l.used * 100).toFixed(1)}%;background:${colorOf(cls)}"></i></div>
+    <span class="pct ${cls}">${Math.round(l.used * 100)}%</span>
+    <span class="reset muted">${reset}</span></div>`;
+}
+
+function account(a) {
+  const active = a.active_on.map((m) => `<span class="chip active">active on ${esc(m)}</span>`).join("");
+  const limit = a.at_limit ? `<span class="chip bad">at limit${a.free_at ? " until " + when(a.free_at) : ""}</span>` : "";
+  const age = a.fetched_at ? `read ${dur(new Date() - new Date(a.fetched_at))} ago${a.reading_from ? " on " + esc(a.reading_from) : ""}` : "no reading yet";
+  const wins = { five_hour: "Session", seven_day: "Weekly" };
+  const rows = a.limits.filter((l) => wins[l.key]).map((l) => windowRow(wins[l.key], l)).join("");
+  return `<div class="acct"><div class="acct-head"><span class="name">${esc(a.name)}</span>
+    <span class="muted">${esc(a.plan)}</span>${active}${limit}<span class="muted">${age}</span></div>${rows}</div>`;
+}
+
+function tool(t) {
+  const fc = t.forecast;
+  const left = fc.capacity_pct ? fc.pool_remaining_pct / fc.capacity_pct : 1;
+  const cls = left < 0.1 ? "bad" : left < 0.25 ? "warn" : "ok";
+  const pool = fc.capacity_pct
+    ? `<span class="big ${cls}">${Math.round(fc.pool_remaining_pct)}%</span><span class="muted">of ${fc.capacity_pct}% weekly left</span>`
+    : "";
+  return `<section class="tool"><div class="tool-head"><h2>${esc(t.title)}</h2>${pool}</div>
+    <div class="outlook">${outlook(fc)}</div>${t.accounts.map(account).join("")}</section>`;
+}
+
+async function load() {
+  try {
+    const st = await (await fetch("api/state", { cache: "no-store" })).json();
+    $("#machines").innerHTML = st.machines.map((m) => {
+      const ago = new Date() - new Date(m.seen_at);
+      return `<span class="chip ${ago < 10 * 60e3 ? "on" : ""}" title="xorp ${esc(m.version)}"><span class="dot"></span>${esc(m.name)} · ${dur(ago)} ago</span>`;
+    }).join("");
+    $("#tools").innerHTML = st.tools.length ? st.tools.map(tool).join("")
+      : `<p class="empty">No reports yet. Point machines at this hub (~/.config/xorp/hub) and run <code>xorp sync</code>.</p>`;
+    $("#foot").textContent = `Updated ${new Date().toLocaleTimeString()} · forecast assumes switching to the soonest-resetting account`;
+  } catch (e) {
+    $("#foot").textContent = "Hub unreachable: " + e.message;
+  }
+}
+
+async function theme() {
+  try {
+    const c = await (await fetch("api/theme")).json();
+    const map = { bg: "background", panel: "lighter_background", line: "muted", fg: "bright_foreground", dim: "foreground", accent: "accent", green: "green", yellow: "yellow", red: "red" };
+    for (const [v, k] of Object.entries(map)) if (c[k]) document.documentElement.style.setProperty(`--${v}`, c[k]);
+    if (c.mode === "light") document.documentElement.style.colorScheme = "light";
+  } catch {}
+}
+
+theme();
+load();
+setInterval(load, 30000);
+setInterval(theme, 300000);
+</script>
+</body>
+</html>

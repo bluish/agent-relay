@@ -1,0 +1,9 @@
+[Unit]
+Description=Refresh xorp account usage for the Omarchy Agents panel
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+
+[Install]
+WantedBy=timers.target
