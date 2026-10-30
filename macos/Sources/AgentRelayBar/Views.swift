@@ -1,7 +1,7 @@
 import SwiftUI
 
-// The menu window already sits on system glass, so the content stays flat: sections
-// split by hairlines, glass only on controls.
+// Cards on the menu window's own material: a hero figure per tool, then its
+// accounts. Glass only on the refresh control.
 
 // MARK: - Panel
 
@@ -10,43 +10,43 @@ struct PanelView: View {
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 8) {
             header
-                .padding(.bottom, 10)
             if let error = store.error {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .padding(.bottom, 10)
+                Card {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.accent)
+                }
             }
             if store.tools.isEmpty && store.error == nil {
-                ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 80)
+                Card { ProgressView().controlSize(.small).frame(maxWidth: .infinity, minHeight: 80) }
             }
-            ForEach(Array(store.tools.enumerated()), id: \.element.id) { i, tool in
-                if i > 0 { Divider().padding(.vertical, 12) }
-                ToolSection(tool: tool, history: store.history[tool.tool])
+            ForEach(store.tools) { tool in
+                ToolCard(tool: tool, history: store.history[tool.tool])
             }
-            Divider().padding(.top, 12).padding(.bottom, 8)
             footer
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(width: 340)
+        .padding(12)
+        .frame(width: Theme.width)
         .onAppear { store.refresh() }
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
-            Text("Agents").font(.headline)
-            Spacer()
+        PanelHeader(icon: "gauge.with.dots.needle.50percent", title: "Agents") {
+            if let at = store.updatedAt {
+                Text(at, format: .relative(presentation: .named))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
             Button {
                 store.refresh(force: true)
             } label: {
                 Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .rotationEffect(.degrees(store.loading ? 360 : 0))
                     .animation(store.loading ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: store.loading)
-                    .frame(width: 18, height: 18)
+                    .frame(width: 16, height: 16)
             }
             .glassButton()
             .buttonBorderShape(.circle)
@@ -55,72 +55,63 @@ struct PanelView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 14) {
             if let hub = store.hubURL {
                 Button {
                     openURL(hub)
                 } label: {
                     Label("Dashboard", systemImage: "chart.bar.xaxis")
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(FooterButtonStyle())
             }
             Spacer()
-            if let at = store.updatedAt {
-                Text(at, format: .relative(presentation: .named))
-                    .foregroundStyle(.tertiary)
-            }
             Menu {
                 Toggle("Launch at Login", isOn: Binding(get: { store.launchAtLogin }, set: { store.launchAtLogin = $0 }))
                 Divider()
                 Button("Quit Agent Relay") { NSApplication.shared.terminate(nil) }
             } label: {
-                Image(systemName: "ellipsis.circle")
+                Image(systemName: "gearshape")
             }
             .menuStyle(.button)
             .buttonStyle(.borderless)
             .menuIndicator(.hidden)
             .fixedSize()
+            .foregroundStyle(.secondary)
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
+        .font(.system(size: 12))
+        .padding(.horizontal, 4)
+        .padding(.top, 2)
     }
 }
 
 // MARK: - Tool
 
-struct ToolSection: View {
+struct ToolCard: View {
     let tool: ToolUsage
     let history: HistoryDoc?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 10) {
+        Card {
+            HStack(spacing: 8) {
                 ProviderMark(tool: tool.tool)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(tool.title).font(.system(.body, weight: .semibold))
-                    if let f = tool.forecast, f.capacityPct > 0 {
-                        Outlook(forecast: f)
-                    }
-                }
-                Spacer(minLength: 8)
-                if let f = tool.forecast, f.capacityPct > 0 {
-                    VStack(alignment: .trailing, spacing: 0) {
-                        Text("\(Int(f.poolRemainingPct.rounded()))%")
-                            .font(.system(.title3, design: .rounded, weight: .semibold).monospacedDigit())
-                            .foregroundStyle(Palette.left(f.leftFraction))
-                        Text("left this week")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
+                Text(tool.title).font(.system(size: 13, weight: .semibold))
+                Spacer()
+                if let active = tool.active {
+                    Text(active).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
             }
+            if let f = tool.forecast, f.capacityPct > 0 {
+                HeroFigure(value: "\(Int(f.poolRemainingPct.rounded()))%", unit: "left this week")
+                CapsuleMeter(fraction: f.leftFraction, color: Palette.leftBar(f.leftFraction))
+                Outlook(forecast: f)
+            }
+            Divider().padding(.vertical, 2)
             VStack(spacing: 2) {
                 ForEach(tool.accounts) { account in
                     AccountRow(tool: tool, account: account, days: history?.accounts[account.name], dayNames: history?.days ?? [])
                 }
             }
-            .padding(.leading, 26)
-            .padding(.trailing, -8)
+            .padding(.horizontal, -8)
         }
     }
 }
@@ -139,8 +130,7 @@ struct ProviderMark: View {
             }
         }
         .aspectRatio(contentMode: .fit)
-        .frame(width: 22, height: 22)
-        .frame(width: 24)
+        .frame(width: 18, height: 18)
     }
 }
 
@@ -151,7 +141,7 @@ struct Outlook: View {
         Group {
             if let dry = forecast.poolEmptyAt {
                 HStack(spacing: 4) {
-                    Text("Runs out \(Fmt.when(dry))").foregroundStyle(.orange)
+                    Text("Runs out \(Fmt.when(dry))").foregroundStyle(Theme.accent)
                     if let back = forecast.refillAt {
                         Text("· back \(Fmt.day(back))").foregroundStyle(.secondary)
                     }
@@ -232,14 +222,14 @@ struct AccountRow: View {
         if account.active {
             Image(systemName: "checkmark.circle.fill")
                 .symbolRenderingMode(.palette)
-                .foregroundStyle(.white, Color.accentColor)
+                .foregroundStyle(.white, Theme.accent)
                 .font(.system(size: 14))
         } else if switching {
             ProgressView().controlSize(.mini)
         } else if hovering {
             Label("Switch", systemImage: "arrow.left.arrow.right")
                 .font(.caption.weight(.medium))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(Theme.accent)
                 .transition(.opacity)
         }
     }
@@ -321,9 +311,9 @@ struct MenuBarLabel: View {
 // MARK: - Helpers
 
 enum Palette {
-    static func used(_ u: Double) -> Color { u >= 0.95 ? .red : u >= 0.8 ? .orange : .accentColor }
-    static func left(_ f: Double) -> Color { f < 0.1 ? .red : f < 0.25 ? .orange : .primary }
-    static func pace(_ v: Double) -> Color { v > 2.0 / 7 ? .red : v > 1.0 / 7 ? .orange : .accentColor }
+    static func used(_ u: Double) -> Color { u >= 0.95 ? Theme.bad : u >= 0.8 ? .orange : Theme.accent }
+    static func leftBar(_ f: Double) -> Color { f < 0.1 ? Theme.bad : f < 0.25 ? .orange : Theme.accent }
+    static func pace(_ v: Double) -> Color { v > 2.0 / 7 ? Theme.bad : v > 1.0 / 7 ? .orange : Theme.accent }
 }
 
 enum Fmt {
